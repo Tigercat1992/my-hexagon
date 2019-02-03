@@ -34,8 +34,12 @@ export default class Canvas extends Component {
 			const { canvasWidth, canvasHeight } = this.state.canvasSize;
 			const ctx = this.canvasCoord.getContext("2d");
 			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-			this.drawNeighbors(this.Hex(q, r, s));
-			this.drawHex(this.canvasCoord, this.Point(x, y), this.state.hexSize, "lime", 3);
+			//this.drawNeighbors(this.Hex(q, r, s));
+			let currentDistanceLine = nextState.currentDistanceLine;
+			for(let i = 0; i <= currentDistanceLine.length - 1; i++) {
+				this.drawHex(this.canvasCoord, this.Point(currentDistanceLine[i].x, currentDistanceLine[i].y), this.state.hexSize, "lime", 2);
+			}
+			this.drawHex(this.canvasCoord, this.Point(x, y), this.state.hexSize, "lime", 2);
 			return true;
 		}
 		return false;
@@ -55,7 +59,7 @@ export default class Canvas extends Component {
 				const center = this.getPointyHexToPixel(this.Hex(q-p, r), hexSize, hexOrigin);
 				if( (center.x > hexWidth/2 && center.x < canvasWidth - hexWidth/2) &&
 					(center.y > hexHeight/2 && center.y < canvasHeight - hexHeight/2) ) {
-					this.drawHex(this.canvasHex, center, hexSize);
+					this.drawHex(this.canvasHex, center, hexSize, "grey", 1);
 					this.drawHexCoordRowAndColumn(this.canvasHex, center, this.Hex(q-p, r, -(q-p)-r));
 				}
 			}
@@ -68,7 +72,7 @@ export default class Canvas extends Component {
 				const center = this.getPointyHexToPixel(this.Hex(q+n, r), hexSize, hexOrigin);
 				if( (center.x > hexWidth/2 && center.x < canvasWidth - hexWidth/2) &&
 					(center.y > hexHeight/2 && center.y < canvasHeight - hexHeight/2) ) {
-					this.drawHex(this.canvasHex, center, hexSize);
+					this.drawHex(this.canvasHex, center, hexSize, "grey", 1);
 					this.drawHexCoordRowAndColumn(this.canvasHex, center, this.Hex(q+n, r, -(q+n)-r));
 				}
 			}
@@ -97,7 +101,7 @@ export default class Canvas extends Component {
 		for(let i = 0; i <= 5; i++) {
 			const {q, r, s} = this.getCubeNeighbor(this.Hex(h.q, h.r, h.s), i);
 			const {x, y} = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
-			this.drawHex(this.canvasCoord, this.Point(x, y), hexSize, "red", 3);
+			this.drawHex(this.canvasCoord, this.Point(x, y), hexSize, "red", 2);
 		}
 	}
 
@@ -107,6 +111,8 @@ export default class Canvas extends Component {
 		let offsetY = event.pageY - canvasPosition.top;		
 		const { q, r, s } = this.cubeRound(this.getPointyPixelToHex(this.Point(offsetX, offsetY), hexSize, hexOrigin));
 		const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
+		this.getDistanceLine( this.Hex(0,0,0), this.Hex(q,r,s) );
+		console.log(this.state.currentDistanceLine)
 		this.setState({ currentHex: { q, r, s, x, y } });
 	}
 
@@ -194,6 +200,41 @@ export default class Canvas extends Component {
 			rs = - rq - rr;
 		}
 		return this.Hex(rq, rr, rs);
+	}
+
+	getDistanceLine(hexA, hexB) {
+		const { hexSize, hexOrigin } = this.state;
+		let dist = this.cubeDistance(hexA, hexB);
+		let arr = [];
+		for(let i = 0; i <= dist; i++) {
+			let center = this.getPointyHexToPixel( 
+				this.cubeRound( this.cubeLinearInt(hexA, hexB, 1.0 / dist * i) ),
+				hexSize, hexOrigin 
+			);
+			arr = [].concat(arr, center);
+		}
+		this.setState({ currentDistanceLine: arr });
+	}
+
+	cubeDistance(hexA, hexB) {
+		const { q, r, s } = this.cubeSubstract(hexA, hexB);
+		return ( Math.abs(q) + Math.abs(r) + Math.abs(s) ) / 2;
+	}
+
+	cubeSubstract(hexA, hexB) {
+		return this.Hex(hexA.q-hexB.q, hexA.r-hexB.r, hexA.s-hexB.s);
+	}
+
+	cubeLinearInt(hexA, hexB, t) {
+		return this.Hex(
+			this.linearInterpolation(hexA.q, hexB.q, t),
+			this.linearInterpolation(hexA.r, hexB.r, t),
+			this.linearInterpolation(hexA.s, hexB.s, t)
+		);
+	}
+
+	linearInterpolation(a, b, t) {
+		return (a + (b - a) * t);
 	}
 
 	getHexParams(hex, size) {
