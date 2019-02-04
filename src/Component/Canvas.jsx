@@ -8,11 +8,14 @@ export default class Canvas extends Component {
 			hexSize: 20,
 			hexOrigin: { x: 400, y: 300 },
 			currentHex: { q: 0, r: 0, s: 0, x: 0, y: 0 },
-			playerPosition: { q: 0, r: 0, s: 0, x: 0, y: 0 },
+			playerPosition: { q: 0, r: 0, s: 0, x: 400, y: 300 },
 			obstacles: [],
+			frontier: [],
+			cameFrom: {},
 		};
 		this.handleMouseMove = this.handleMouseMove.bind(this);
 		this.handleClick = this.handleClick.bind(this);
+		this.handleExpandClick = this.handleExpandClick.bind(this);
 	}
 
 	componentWillMount() {
@@ -24,34 +27,49 @@ export default class Canvas extends Component {
 
 	componentDidMount() {
 		const { canvasWidth, canvasHeight } = this.state.canvasSize;
+		const { playerPosition, hexSize } = this.state;
 		this.canvasHex.width = canvasWidth;
 		this.canvasHex.height = canvasHeight;
 		this.canvasInteraction.width = canvasWidth;
 		this.canvasInteraction.height = canvasHeight;
-		this.drawHexes(this.canvasHex, this.state.hexSize);
+		this.canvasView.width = canvasWidth;
+		this.canvasView.height = canvasHeight;
 		this.getCanvasPosition(this.canvasInteraction);
+		this.drawHex(this.canvasInteraction, this.Point(playerPosition.x, playerPosition.y), hexSize, 1, "black", "red");
+		this.drawHexes(this.canvasHex, this.state.hexSize);
 	}
 
 	shouldComponentUpdate(nextProps, nextState) {
+		const { hexSize, hexOrigin } = this.state;
+		const { canvasWidth, canvasHeight } = this.state.canvasSize;
 		if(nextState.currentHex !== this.state.currentHex) {
-			const { q, r, s, x, y } = nextState.currentHex;
-			const { canvasWidth, canvasHeight } = this.state.canvasSize;
+			const { x, y } = nextState.currentHex;
 			const ctx = this.canvasInteraction.getContext("2d");
 			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 			//this.drawNeighbors(this.Hex(q, r, s));
 			let currentDistanceLine = nextState.currentDistanceLine;
 			for(let i = 0; i <= currentDistanceLine.length - 1; i++) {
 				if(i === 0)
-					this.drawHex(this.canvasInteraction, this.Point(currentDistanceLine[i].x, currentDistanceLine[i].y), this.state.hexSize, 1, "black", "red");
+					this.drawHex(this.canvasInteraction, this.Point(currentDistanceLine[i].x, currentDistanceLine[i].y), hexSize, 1, "black", "red");
 				else
-					this.drawHex(this.canvasInteraction, this.Point(currentDistanceLine[i].x, currentDistanceLine[i].y), this.state.hexSize, 1, "black", "grey");
+					this.drawHex(this.canvasInteraction, this.Point(currentDistanceLine[i].x, currentDistanceLine[i].y), hexSize, 1, "black", "grey");
 			}
 			nextState.obstacles.map( ob => {
-				const { q, r, s, x, y } = JSON.parse(ob);
-				this.drawHex(this.canvasInteraction, this.Point(x, y), this.state.hexSize, 1, "black", "black")
+				const { q, r, s } = JSON.parse(ob);
+				const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
+				return this.drawHex(this.canvasInteraction, this.Point(x, y), hexSize, 1, "black", "black")
 			})
-			this.drawHex(this.canvasInteraction, this.Point(x, y), this.state.hexSize, 1, "black", "grey");
+			this.drawHex(this.canvasInteraction, this.Point(x, y), hexSize, 1, "black", "grey");
 			return true;
+		}
+		if(nextState.cameFrom !== this.state.cameFrom) {
+			const ctx = this.canvasView.getContext('2d');
+			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+			for(let l in nextState.cameFrom) {
+				const { q, r, s } = JSON.parse(l);
+				const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
+				this.drawHex(this.canvasView, this.Point(x, y), hexSize, 1, "black", "green")
+			}
 		}
 		return false;
 	}
@@ -60,7 +78,7 @@ export default class Canvas extends Component {
 	drawHexes() {
 		const { hexSize, hexOrigin, hexParams, canvasSize } = this.state;
 		const { canvasWidth, canvasHeight } = this.state.canvasSize;
-		const { hexWidth, hexHeight, horizDist, vertDist } = this.state.hexParams;
+		const { hexWidth, hexHeight } = this.state.hexParams;
 		const { leftSide, rightSide, topSide, bottomSide } = this.getHexesAreaOnCanvas(canvasSize, hexOrigin, hexParams);
 
 		let p = 0;
@@ -120,7 +138,7 @@ export default class Canvas extends Component {
 	handleMouseMove(event) {
 		const { canvasPosition, hexSize, hexOrigin } = this.state;
 		const { canvasWidth, canvasHeight } = this.state.canvasSize;
-		const { hexWidth, hexHeight, horizDist, vertDist } = this.state.hexParams;
+		const { hexWidth, hexHeight } = this.state.hexParams;
 		let offsetX = event.pageX - canvasPosition.left;
 		let offsetY = event.pageY - canvasPosition.top;		
 		const { q, r, s } = this.cubeRound(this.getPointyPixelToHex(this.Point(offsetX, offsetY), hexSize, hexOrigin));
@@ -137,15 +155,41 @@ export default class Canvas extends Component {
 		this.addObstacles();
 	}
 
+	handleExpandClick() {
+		let { frontier, cameFrom, obstacles } = this.state;
+		let { q, r, s } = this.state.playerPosition;
+		if(frontier.length === 0) {
+			frontier.push(this.Hex(q, r, s));
+			cameFrom[JSON.stringify(this.Hex(q, r, s))] = JSON.stringify(null);
+		}
+		let n = 0;
+		if(n < 1) {
+			let current = frontier.shift();
+			let arr = this.getNeighbors(current);
+			arr.map( l => {
+				if(!cameFrom.hasOwnProperty(JSON.stringify(l)) && !obstacles.includes(JSON.stringify(l))) {
+					frontier.push(l);
+					cameFrom[JSON.stringify(l)] = JSON.stringify(current);
+				}
+				return null;
+			})
+			n++;
+		}
+		cameFrom = Object.assign({}, cameFrom);
+		this.setState({ cameFrom });
+	}
+
 	addObstacles() {
-		let { obstacles, currentHex } = this.state;
-		if(!obstacles.includes(JSON.stringify(currentHex))) {
-			obstacles = [].concat(obstacles, JSON.stringify(currentHex));
+		const { q, r, s } = this.state.currentHex;
+		let { obstacles } = this.state;
+		if(!obstacles.includes(JSON.stringify(this.Hex(q, r, s)))) {
+			obstacles = [].concat(obstacles, JSON.stringify(this.Hex(q, r, s)));
 		} else {
-			obstacles.map((ob, index)=> {
-				if(ob === JSON.stringify(currentHex)) {
+			obstacles.map( (ob, index) => {
+				if(ob === JSON.stringify(this.Hex(q, r, s))) {
 					obstacles = obstacles.slice(0, index).concat(obstacles.slice(index+1));
 				}
+				return null;
 			});
 		}
 		this.setState({ obstacles })
@@ -156,11 +200,13 @@ export default class Canvas extends Component {
 			<div>
 				<canvas ref={canvasHex => this.canvasHex = canvasHex}></canvas>
 				<canvas ref={canvasCoordinates => this.canvasCoordinates = canvasCoordinates}></canvas>
+				<canvas ref={canvasView => this.canvasView = canvasView}></canvas>
 				<canvas 
 					ref={canvasInteraction => this.canvasInteraction = canvasInteraction}
 					onMouseMove={this.handleMouseMove}
 					onClick={this.handleClick}
 				></canvas>
+				<button className="expandButton" onClick={this.handleExpandClick}>Expand</button>
 			</div>
 		);
 	}
@@ -230,6 +276,15 @@ export default class Canvas extends Component {
 
 	getCubeNeighbor(h, direction) {
 		return this.cubeAdd(h, this.cubeDirection(direction));
+	}
+
+	getNeighbors(h) {
+		let arr = [];
+		for(let i = 0; i <= 5; i++) {
+			const { q, r, s } = this.getCubeNeighbor(this.Hex(h.q, h.r, h.s), i);
+			arr.push(this.Hex(q, r, s));
+		}
+		return arr;
 	}
 
 	cubeRound(hex) {
