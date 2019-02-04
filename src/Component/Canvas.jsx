@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-import './Canvas.css';
+import './Canvas.css'; 
 
 export default class Canvas extends Component {
 	constructor(props) {
