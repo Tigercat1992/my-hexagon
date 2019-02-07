@@ -74,6 +74,9 @@ export default class Canvas extends Component {
 				const { q, r, s } = JSON.parse(l);
 				const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
 				this.drawHex(this.canvasView, this.Point(x, y), hexSize, 1, "black", "green")
+				let from = JSON.parse(nextState.cameFrom[l]);
+				let fromCoord = this.getPointyHexToPixel(this.Hex(from.q, from.r), hexSize, hexOrigin);
+				this.drawArrow(this.canvasView, fromCoord.x, fromCoord.y, x, y, "red", 2);
 			}
 			return true;
 		}
@@ -147,21 +150,6 @@ export default class Canvas extends Component {
 		} 
 	}
 
-	getPath(start, current) {
-		const { cameFrom } = this.state;
-		start = JSON.stringify(start);
-		current = JSON.stringify(current);
-		if(cameFrom[current] !== undefined) {
-			let path = [current];
-			while (current !== start) {
-				current = cameFrom[current];
-				path.push(current);
-			}
-			path = [].concat(path);
-			this.setState({ path });
-		}
-	}
-
 	drawPath(canvasID) {
 		let { path, hexSize, hexOrigin } = this.state;
 		for (let i = 0; i <= path.length - 1; i++) {
@@ -169,6 +157,39 @@ export default class Canvas extends Component {
 			const { x, y } = this.getPointyHexToPixel(this.Hex(q, r), hexSize, hexOrigin);
 			this.drawHex(canvasID, this.Point(x, y), hexSize, 1, "black", "yellow");
 		}
+	}
+
+	drawArrow(canvasID, fromX, fromY, toX, toY, color, lineWidth) {
+		const ctx = canvasID.getContext("2d");
+		const headlen = lineWidth * 5 / 2;
+		const angle = Math.atan2(toY - fromY, toX - fromX);
+		ctx.beginPath();
+		ctx.moveTo(fromX, fromY);
+		ctx.lineTo(toX, toY);
+		ctx.strokeStyle = color;
+		ctx.lineWidth = lineWidth * 3 / 2;
+		ctx.stroke();
+		ctx.beginPath();
+		ctx.moveTo(toX, toY);
+		ctx.globalAlpha = 0.3;
+		ctx.lineTo( 
+			toX - headlen * Math.cos(angle - Math.PI / 7), 
+			toY - headlen * Math.sin(angle - Math.PI / 7) 
+		);
+		ctx.lineTo( 
+			toX - headlen * Math.cos(angle + Math.PI / 7), 
+			toY - headlen * Math.sin(angle + Math.PI / 7) 
+		);
+		ctx.lineTo(toX, toY);
+		ctx.lineTo(
+			toX - headlen * Math.cos(angle - Math.PI / 7),
+			toY - headlen * Math.sin(angle - Math.PI / 7)
+		);
+		ctx.strokeStyle = color;
+		ctx.lineWidth = lineWidth * 5 / 2;
+		ctx.stroke();
+		ctx.fillStyle = color;
+		ctx.fill();
 	}
 
 	drawObstacles(canvasID) {
@@ -200,6 +221,7 @@ export default class Canvas extends Component {
 		let { playerPosition } = this.state;
 		//this.getDistanceLine( this.Hex(playerPosition.q, playerPosition.r, playerPosition.s), this.Hex(q,r,s), hexSize, hexOrigin );
 		this.getPath(this.Hex(playerPosition.q, playerPosition.r, playerPosition.s), this.Hex(q, r, s) );
+
 		if((x > hexWidth/2 && x < canvasWidth - hexWidth/2) && (y > hexHeight/2 && y < canvasHeight - hexHeight/2)) {
 			this.setState({ currentHex: { q, r, s, x, y } });
 		}
@@ -242,8 +264,24 @@ export default class Canvas extends Component {
 	// 	this.setState({ cameFrom });
 	// }
 
+	getPath(start, current) {
+		const { cameFrom } = this.state;
+		start = JSON.stringify(start);
+		current = JSON.stringify(current);
+		if(cameFrom[current] !== undefined) {
+			var path = [current];
+			while (current !== start) { 
+				current = cameFrom[current];
+				path.push(current);
+			}
+			path = [].concat(path);
+			this.setState({ path });
+		}
+	}
+
 	breadthFirstSearch(playerPosition) {
-		let { cameFrom, hexPathMap } = this.state;
+		let { hexPathMap } = this.state;
+		let cameFrom = {};
 		let current = [];
 		let frontier = [playerPosition];
 		cameFrom[JSON.stringify(playerPosition)] = JSON.stringify(playerPosition);
@@ -275,7 +313,7 @@ export default class Canvas extends Component {
 				return null;
 			});
 		}
-		this.setState({ obstacles }, () => this.findObstacles() )
+		this.setState({ obstacles });
 	}
 
 //canvas drawing
@@ -311,6 +349,7 @@ export default class Canvas extends Component {
 //canvas drawing END
 
 	render() {
+		console.log(" > ", this.state.currentHex)
 		return (
 			<div>
 				<canvas ref={canvasHex => this.canvasHex = canvasHex}></canvas>
@@ -446,20 +485,6 @@ export default class Canvas extends Component {
 		return { q: q, r: r, s: s };
 	}
 //helper function END
-
-	//My Function
-	findObstacles() {
-		const { obstacles } = this.state;
-		let allObstacles = [];
-		obstacles.map( ob => {
-			const { q, r, s } = JSON.parse(ob);
-			allObstacles = [].concat(allObstacles, this.Hex(q, r, s));
-			return null;
-		});
-		return allObstacles;
-	}
-
-
 
 //draw Hexes function (2) # need more or less values of leftSide & rightSide according to canvas size
 	// drawHexes() {
