@@ -349,7 +349,6 @@ export default class Canvas extends Component {
 //canvas drawing END
 
 	render() {
-		console.log(" > ", this.state.currentHex)
 		return (
 			<div>
 				<canvas ref={canvasHex => this.canvasHex = canvasHex}></canvas>
