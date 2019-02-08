@@ -16,6 +16,7 @@ export default class Canvas extends Component {
 			hexPathMap: [],
 			path: [],
 			hexSides: [],
+			nearestObstacles: [],
 		};
 		this.handleMouseMove = this.handleMouseMove.bind(this);
 		this.handleClick = this.handleClick.bind(this);
@@ -76,9 +77,9 @@ export default class Canvas extends Component {
 				const { q, r, s } = JSON.parse(l);
 				const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
 				this.drawHex(this.canvasView, this.Point(x, y), hexSize, 1, "black", "darkGreen")
-				let from = JSON.parse(nextState.cameFrom[l]);
+				/* let from = JSON.parse(nextState.cameFrom[l]);
 				let fromCoord = this.getPointyHexToPixel(this.Hex(from.q, from.r), hexSize, hexOrigin);
-				this.drawArrow(this.canvasView, fromCoord.x, fromCoord.y, x, y, "red", 2);
+				this.drawArrow(this.canvasView, fromCoord.x, fromCoord.y, x, y, "red", 2); */
 			}
 			return true;
 		}
@@ -257,9 +258,9 @@ export default class Canvas extends Component {
 	}
 
 	getObstacleSides() { // JSON OBJECT OF ARRAY
-		const { hexSize, hexOrigin, obstacles } = this.state;
+		const { hexSize, hexOrigin, nearestObstacles } = this.state;
 		let arr = [];
-		obstacles.map( ob => {
+		nearestObstacles.map( ob => {
 			let center = this.getPointyHexToPixel(JSON.parse(ob), hexSize, hexOrigin);
 			for(let i = 0; i < 6; i++) {
 				let start = this.getPointyHexCornerCoord(center, hexSize, i);
@@ -292,15 +293,19 @@ export default class Canvas extends Component {
 	}
 
 	breadthFirstSearch(playerPosition) {
-		let { hexPathMap } = this.state;
+		let { hexPathMap, obstacles } = this.state;
 		let cameFrom = {};
 		let current = [];
+		let nearestObstacles = [];
 		let frontier = [playerPosition];
 		cameFrom[JSON.stringify(playerPosition)] = JSON.stringify(playerPosition);
 		let objMaker =  (l) => {
 			if(!cameFrom.hasOwnProperty(JSON.stringify(l)) && hexPathMap.includes(JSON.stringify(l))) {
 				frontier.push(l);
 				cameFrom[JSON.stringify(l)] = JSON.stringify(current);
+			}
+			if(obstacles.includes(JSON.stringify(l))) {
+				nearestObstacles.push(JSON.stringify(l));
 			}
 		};
 		while (frontier.length !== 0) {
@@ -309,7 +314,10 @@ export default class Canvas extends Component {
 			arr.map(objMaker)
 		};
 		cameFrom = Object.assign({}, cameFrom);
-		this.setState({ cameFrom }, this.getObstacleSidesCallback = () => this.getObstacleSides());
+		this.setState({ 
+			cameFrom,
+			nearestObstacles 
+		}, this.getObstacleSidesCallback = () => this.getObstacleSides());
 	}
 
 	addObstacles() {
