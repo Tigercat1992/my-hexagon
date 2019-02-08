@@ -15,10 +15,12 @@ export default class Canvas extends Component {
 			cameFrom: {},
 			hexPathMap: [],
 			path: [],
+			hexSides: [],
 		};
 		this.handleMouseMove = this.handleMouseMove.bind(this);
 		this.handleClick = this.handleClick.bind(this);
 		//this.handleExpandClick = this.handleExpandClick.bind(this);
+		this.startMoving = this.startMoving.bind(this);
 	}
 
 	componentWillMount() {
@@ -30,7 +32,7 @@ export default class Canvas extends Component {
 
 	componentDidMount() {
 		const { canvasWidth, canvasHeight } = this.state.canvasSize;
-		const { hexSize } = this.state;
+		const { hexSize, hexOrigin, playerPosition } = this.state;
 		this.canvasHex.width = canvasWidth;
 		this.canvasHex.height = canvasHeight;
 		this.canvasInteraction.width = canvasWidth;
@@ -38,7 +40,7 @@ export default class Canvas extends Component {
 		this.canvasView.width = canvasWidth;
 		this.canvasView.height = canvasHeight;
 		this.getCanvasPosition(this.canvasInteraction);
-		//this.drawHex(this.canvasInteraction, this.Point(playerPosition.x, playerPosition.y), hexSize, 1, "black", "red");
+		this.drawHex(this.canvasInteraction, this.getPointyHexToPixel(playerPosition, hexSize, hexOrigin), hexSize, 1, "black", "yellow");
 		this.drawHexes(this.canvasHex, hexSize);
 		this.drawObstacles(this.canvasHex);
 	}
@@ -46,7 +48,7 @@ export default class Canvas extends Component {
 	shouldComponentUpdate(nextProps, nextState) {
 		const { hexSize, hexOrigin } = this.state;
 		const { canvasWidth, canvasHeight } = this.state.canvasSize;
-		if(nextState.currentHex !== this.state.currentHex) {
+		/*if(nextState.currentHex !== this.state.currentHex) {
 			//const { x, y } = nextState.currentHex;
 			const ctx = this.canvasInteraction.getContext("2d");
 			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -66,14 +68,14 @@ export default class Canvas extends Component {
 			// })
 			//this.drawHex(this.canvasInteraction, this.Point(x, y), hexSize, 1, "black", "grey");
 			return true;
-		}
+		}*/
 		if(nextState.cameFrom !== this.state.cameFrom) {
 			const ctx = this.canvasView.getContext('2d');
 			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 			for(let l in nextState.cameFrom) {
 				const { q, r, s } = JSON.parse(l);
 				const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
-				this.drawHex(this.canvasView, this.Point(x, y), hexSize, 1, "black", "green")
+				this.drawHex(this.canvasView, this.Point(x, y), hexSize, 1, "black", "darkGreen")
 				let from = JSON.parse(nextState.cameFrom[l]);
 				let fromCoord = this.getPointyHexToPixel(this.Hex(from.q, from.r), hexSize, hexOrigin);
 				this.drawArrow(this.canvasView, fromCoord.x, fromCoord.y, x, y, "red", 2);
@@ -155,7 +157,7 @@ export default class Canvas extends Component {
 		for (let i = 0; i <= path.length - 1; i++) {
 			const { q, r } = JSON.parse(path[i]);
 			const { x, y } = this.getPointyHexToPixel(this.Hex(q, r), hexSize, hexOrigin);
-			this.drawHex(canvasID, this.Point(x, y), hexSize, 1, "black", "yellow");
+			this.drawHex(canvasID, this.Point(x, y), hexSize, 1, "black", "lime");
 		}
 	}
 
@@ -201,68 +203,78 @@ export default class Canvas extends Component {
 		});
 	}
  
-	drawNeighbors(h) {
+	// drawNeighbors(h) {
+	// 	const { hexSize, hexOrigin } = this.state;
+	// 	for(let i = 0; i <= 5; i++) {
+	// 		const {q, r, s} = this.getCubeNeighbor(this.Hex(h.q, h.r, h.s), i);
+	// 		const {x, y} = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
+	// 		this.drawHex(this.canvasInteraction, this.Point(x, y), hexSize, 1, "darkBlue", "grey");
+	// 	}
+	// }
+
+	getHexBeamsCoord(center, range, i) {
+		let angle_deg = 1 * i - 30;
+		let angle_rad = Math.PI / 180 * angle_deg;
+		let x = center.x + range * Math.cos(angle_rad);
+		let y = center.y + range * Math.sin(angle_rad);
+		return this.Point(x, y);
+	}
+
+	startMoving(path) {
 		const { hexSize, hexOrigin } = this.state;
-		for(let i = 0; i <= 5; i++) {
-			const {q, r, s} = this.getCubeNeighbor(this.Hex(h.q, h.r, h.s), i);
-			const {x, y} = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
-			this.drawHex(this.canvasInteraction, this.Point(x, y), hexSize, 1, "red", "grey");
-		}
-	}
-
-	handleMouseMove(event) {
-		const { canvasPosition, hexSize, hexOrigin } = this.state;
-		const { canvasWidth, canvasHeight } = this.state.canvasSize;
-		const { hexWidth, hexHeight } = this.state.hexParams;
-		let offsetX = event.pageX - canvasPosition.left;
-		let offsetY = event.pageY - canvasPosition.top;		
-		const { q, r, s } = this.cubeRound(this.getPointyPixelToHex(this.Point(offsetX, offsetY), hexSize, hexOrigin));
-		const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
-		let { playerPosition } = this.state;
-		//this.getDistanceLine( this.Hex(playerPosition.q, playerPosition.r, playerPosition.s), this.Hex(q,r,s), hexSize, hexOrigin );
-		this.getPath(this.Hex(playerPosition.q, playerPosition.r, playerPosition.s), this.Hex(q, r, s) );
-
-		if((x > hexWidth/2 && x < canvasWidth - hexWidth/2) && (y > hexHeight/2 && y < canvasHeight - hexHeight/2)) {
-			this.setState({ currentHex: { q, r, s, x, y } });
-		}
-	}
-
-	handleClick() {
-		const { currentHex, cameFrom } = this.state;
-		const { q, r, s } = currentHex;
-		if(cameFrom[JSON.stringify(this.Hex(q, r, s))]) {
+		if(path.length === 0) {
+			clearInterval(this.intervalID);
+		} else {
+			const { canvasWidth, canvasHeight } = this.state.canvasSize;
+			const ctx = this.canvasInteraction.getContext("2d");
+			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+			let current = path.pop();
+			const { q, r, s } = JSON.parse(current);
+			const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
+			this.drawHex(this.canvasInteraction, this.Point(x, y), hexSize, 1, "black", "yellow");
 			this.setState(
 				{ playerPosition: this.Hex(q, r, s) },
 				this.breadthFirstSearchCallback = () => this.breadthFirstSearch(this.state.playerPosition)
-			)
+			);
 		}
-		//this.setState({ playerPosition: this.state.currentHex });
-		//this.addObstacles();
 	}
 
-	// handleExpandClick() {
-	// 	let { frontier, cameFrom, obstacles } = this.state;
-	// 	let { q, r, s } = this.state.playerPosition;
-	// 	if(frontier.length === 0) {
-	// 		frontier.push(this.Hex(q, r, s));
-	// 		cameFrom[JSON.stringify(this.Hex(q, r, s))] = JSON.stringify(null);
-	// 	}
-	// 	let n = 0;
-	// 	if(n < 1) {
-	// 		let current = frontier.shift();
-	// 		let arr = this.getNeighbors(current);
-	// 		arr.map( l => {
-	// 			if(!cameFrom.hasOwnProperty(JSON.stringify(l)) && !obstacles.includes(JSON.stringify(l))) {
-	// 				frontier.push(l);
-	// 				cameFrom[JSON.stringify(l)] = JSON.stringify(current);
-	// 			}
-	// 			return null;
-	// 		})
-	// 		n++;
-	// 	}
-	// 	cameFrom = Object.assign({}, cameFrom);
-	// 	this.setState({ cameFrom });
-	// }
+	visibleField(canvasID) {
+		const { playerPosition, hexSides, hexSize, hexOrigin } = this.state;
+		let center = this.getPointyHexToPixel(playerPosition, hexSize, hexOrigin);
+		for(let j = 0; j < 360; j++) {
+			let beam = this.getHexBeamsCoord(center, 800, j);
+			for(let i = 0; i < hexSides.length; i++) {
+				let side = JSON.parse(hexSides[i]);
+				//this.drawLine(canvasID, {x: side.start.x, y: side.start.y}, {x: side.end.x, y: side.end.y}, 2, "red");
+				let intersect = this.lineIntersect(center.x, center.y, beam.x, beam.y, side.start.x, side.start.y, side.end.x, side.end.y);
+				if(intersect) {
+					this.drawLine(canvasID, center, intersect, 1, "yellow"); 
+					break;
+				}
+			}
+		}
+	}
+
+	getObstacleSides() { // JSON OBJECT OF ARRAY
+		const { hexSize, hexOrigin, obstacles } = this.state;
+		let arr = [];
+		obstacles.map( ob => {
+			let center = this.getPointyHexToPixel(JSON.parse(ob), hexSize, hexOrigin);
+			for(let i = 0; i < 6; i++) {
+				let start = this.getPointyHexCornerCoord(center, hexSize, i);
+				let end = this.getPointyHexCornerCoord(center, hexSize, i + 1);
+				let side = JSON.stringify({start, end});
+				if(!arr.includes(side)) {
+					arr.push(side);
+				}
+			}
+			return null;
+		});
+		this.setState({
+			hexSides: arr
+		}, this.visibleFieldCallback = () => this.visibleField(this.canvasInteraction))
+	}
 
 	getPath(start, current) {
 		const { cameFrom } = this.state;
@@ -297,7 +309,7 @@ export default class Canvas extends Component {
 			arr.map(objMaker)
 		};
 		cameFrom = Object.assign({}, cameFrom);
-		this.setState({ cameFrom });
+		this.setState({ cameFrom }, this.getObstacleSidesCallback = () => this.getObstacleSides());
 	}
 
 	addObstacles() {
@@ -315,6 +327,59 @@ export default class Canvas extends Component {
 		}
 		this.setState({ obstacles });
 	}
+
+	handleClick() {
+		clearInterval(this.intervalID);
+		const { currentHex, cameFrom, path } = this.state;
+		const { q, r, s } = currentHex;
+		if(cameFrom[JSON.stringify(this.Hex(q, r, s))]) {
+			path.pop();
+			this.intervalID = setInterval(() => this.startMoving(path), 100);
+		}
+		//this.setState({ playerPosition: this.state.currentHex });
+		//this.addObstacles();
+	}
+
+	handleMouseMove(event) {
+		const { canvasPosition, hexSize, hexOrigin } = this.state;
+		const { canvasWidth, canvasHeight } = this.state.canvasSize;
+		const { hexWidth, hexHeight } = this.state.hexParams;
+		let offsetX = event.pageX - canvasPosition.left;
+		let offsetY = event.pageY - canvasPosition.top;		
+		const { q, r, s } = this.cubeRound(this.getPointyPixelToHex(this.Point(offsetX, offsetY), hexSize, hexOrigin));
+		const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
+		let { playerPosition } = this.state;
+		//this.getDistanceLine( this.Hex(playerPosition.q, playerPosition.r, playerPosition.s), this.Hex(q,r,s), hexSize, hexOrigin );
+		this.getPath(this.Hex(playerPosition.q, playerPosition.r, playerPosition.s), this.Hex(q, r, s) );
+
+		if((x > hexWidth/2 && x < canvasWidth - hexWidth/2) && (y > hexHeight/2 && y < canvasHeight - hexHeight/2)) {
+			this.setState({ currentHex: { q, r, s, x, y } });
+		}
+	}
+
+	// handleExpandClick() {
+	// 	let { frontier, cameFrom, obstacles } = this.state;
+	// 	let { q, r, s } = this.state.playerPosition;
+	// 	if(frontier.length === 0) {
+	// 		frontier.push(this.Hex(q, r, s));
+	// 		cameFrom[JSON.stringify(this.Hex(q, r, s))] = JSON.stringify(null);
+	// 	}
+	// 	let n = 0;
+	// 	if(n < 1) {
+	// 		let current = frontier.shift();
+	// 		let arr = this.getNeighbors(current);
+	// 		arr.map( l => {
+	// 			if(!cameFrom.hasOwnProperty(JSON.stringify(l)) && !obstacles.includes(JSON.stringify(l))) {
+	// 				frontier.push(l);
+	// 				cameFrom[JSON.stringify(l)] = JSON.stringify(current);
+	// 			}
+	// 			return null;
+	// 		})
+	// 		n++;
+	// 	}
+	// 	cameFrom = Object.assign({}, cameFrom);
+	// 	this.setState({ cameFrom });
+	// }
 
 //canvas drawing
 	drawLine(canvasID, start, end, lineWidth, lineColor) {
@@ -334,7 +399,7 @@ export default class Canvas extends Component {
 		const ctx = canvasID.getContext('2d');
 		ctx.beginPath();
 		ctx.fillStyle = fillColor;
-		ctx.globalAlpha = 0.1;
+		ctx.globalAlpha = 0.5;
 		[0,1,2,3,4,5].map( i => ctx.lineTo(coor[i].x, coor[i].y) );
 		ctx.closePath();
 		ctx.fill();
@@ -473,6 +538,44 @@ export default class Canvas extends Component {
 			canvasPosition: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom }
 		})
 	}
+
+	between(a, b, c) {
+		let eps = 0.0000001;
+		return a - eps <= b && b <= c + eps;
+	}
+
+	lineIntersect(x1, y1, x2, y2, x3, y3, x4, y4) { // 1 = beamStart, 2 = beamEnd, 3 = lineStart, 4 = lineEnd
+		let x = ( (x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4) ) /
+			( (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4) );
+		let y = ( (x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) /
+			( (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4) );
+		if(isNaN(x) || isNaN(y)) {
+			return false;
+		} else {
+			if(x1 >= x2) {
+				if(!this.between(x2, x, x1)) { return false;}
+			}else {
+				if(!this.between(x1, x, x2)) { return false;}
+			}
+			if(y1 >= y2) {
+				if(!this.between(y2, y, y1)) { return false;}
+			}else {
+				if(!this.between(y1, y, y2)) { return false;}
+			}
+			if(x3 >= x4) {
+				if(!this.between(x4, x, x3)) { return false;}
+			}else {
+				if(!this.between(x3, x, x4)) { return false;}
+			}
+			if(y3 >= y4) {
+				if(!this.between(y4, y, y3)) { return false;}
+			}else {
+				if(!this.between(y3, y, y4)) { return false;}
+			}
+		}
+		return {x, y};
+	}
+
 //useful function END
 
 //helper function
