@@ -308,7 +308,7 @@ export default class Canvas extends Component {
 		for(let i = 0; i < endPoints.length; i++) {
 			if( i + 1 === 360) {
 				ctxCanvasFog.lineTo(endPoints[i].x, endPoints[i].y);
-				ctxCanvasFogHide.lineTo(endPoints[i]. x, endPoints[i].y);
+				ctxCanvasFogHide.lineTo(endPoints[i].x, endPoints[i].y);
 				this.drawLine(canvasID, endPoints[i], endPoints[0], 1, "yellow"); 	
 			}else {
 				ctxCanvasFog.lineTo(endPoints[i].x, endPoints[i].y);
