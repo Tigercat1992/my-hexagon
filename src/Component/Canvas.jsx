@@ -40,10 +40,13 @@ export default class Canvas extends Component {
 		this.canvasInteraction.height = canvasHeight;
 		this.canvasView.width = canvasWidth;
 		this.canvasView.height = canvasHeight;
+		this.canvasCoordinates.width = canvasWidth;
+		this.canvasCoordinates.height = canvasHeight;
 		this.getCanvasPosition(this.canvasInteraction);
 		this.drawHex(this.canvasInteraction, this.getPointyHexToPixel(playerPosition, hexSize, hexOrigin), hexSize, 1, "black", "yellow");
 		this.drawHexes(this.canvasHex, hexSize);
 		this.drawObstacles(this.canvasHex);
+
 	}
 
 	shouldComponentUpdate(nextProps, nextState) {
@@ -102,7 +105,7 @@ export default class Canvas extends Component {
 				if( (center.x > hexWidth/2 && center.x < canvasWidth - hexWidth/2) &&
 					(center.y > hexHeight/2 && center.y < canvasHeight - hexHeight/2) ) {
 					this.drawHex(this.canvasHex, center, hexSize, "black", 1, "grey");
-					//this.drawHexCoordRowAndColumn(this.canvasHex, center, this.Hex(q-p, r, -(q-p)-r));
+					this.drawHexCoordRowAndColumn(this.canvasCoordinates, center, this.Hex(q-p, r, -(q-p)-r));
 					let bottomH = JSON.stringify(this.Hex(q-p, r, -(q-p)-r));
 					if(!obstacles.includes(bottomH)) {
 						hexPathMap.push(bottomH);
@@ -119,7 +122,7 @@ export default class Canvas extends Component {
 				if( (center.x > hexWidth/2 && center.x < canvasWidth - hexWidth/2) &&
 					(center.y > hexHeight/2 && center.y < canvasHeight - hexHeight/2) ) {
 					this.drawHex(this.canvasHex, center, hexSize, 1, "black", "grey");
-					//this.drawHexCoordRowAndColumn(this.canvasHex, center, this.Hex(q+n, r, -(q+n)-r));
+					this.drawHexCoordRowAndColumn(this.canvasCoordinates, center, this.Hex(q+n, r, -(q+n)-r));
 					var topH = JSON.stringify(this.Hex(q+n, r, -(q+n)-r));
 					if(!obstacles.includes(topH)) {
 						hexPathMap.push(topH);
@@ -214,7 +217,7 @@ export default class Canvas extends Component {
 	// }
 
 	getHexBeamsCoord(center, range, i) {
-		let angle_deg = 1 * i - 30;
+		let angle_deg = 1 * i + 30;
 		let angle_rad = Math.PI / 180 * angle_deg;
 		let x = center.x + range * Math.cos(angle_rad);
 		let y = center.y + range * Math.sin(angle_rad);
@@ -247,7 +250,7 @@ export default class Canvas extends Component {
 			let beam = this.getHexBeamsCoord(center, 800, j);
 			for(let i = 0; i < hexSides.length; i++) {
 				let side = JSON.parse(hexSides[i]);
-				//this.drawLine(canvasID, {x: side.start.x, y: side.start.y}, {x: side.end.x, y: side.end.y}, 2, "red");
+				this.drawLine(canvasID, {x: side.start.x, y: side.start.y}, {x: side.end.x, y: side.end.y}, 2, "red");
 				let intersect = this.lineIntersect(center.x, center.y, beam.x, beam.y, side.start.x, side.start.y, side.end.x, side.end.y);
 				if(intersect) {
 					this.drawLine(canvasID, center, intersect, 1, "yellow"); 
@@ -258,16 +261,26 @@ export default class Canvas extends Component {
 	}
 
 	getObstacleSides() { // JSON OBJECT OF ARRAY
-		const { hexSize, hexOrigin, nearestObstacles } = this.state;
+		const { hexSize, hexOrigin, nearestObstacles, playerPosition } = this.state;
+		const { q, r, s } = playerPosition;
+		const playerPositionCenter = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
 		let arr = [];
 		nearestObstacles.map( ob => {
-			let center = this.getPointyHexToPixel(JSON.parse(ob), hexSize, hexOrigin);
+			let hexCenter = this.getPointyHexToPixel(JSON.parse(ob), hexSize, hexOrigin);
+			let fromPlayerToHex = Math.floor(this.getDistance(playerPositionCenter, hexCenter));
 			for(let i = 0; i < 6; i++) {
-				let start = this.getPointyHexCornerCoord(center, hexSize, i);
-				let end = this.getPointyHexCornerCoord(center, hexSize, i + 1);
-				let side = JSON.stringify({start, end});
-				if(!arr.includes(side)) {
-					arr.push(side);
+				let neighbor = JSON.stringify(this.getCubeNeighbor(JSON.parse(ob), i) );
+				if( !nearestObstacles.includes(neighbor) ) {
+					let start = this.getPointyHexCornerCoord(hexCenter, hexSize, i);
+					let end = this.getPointyHexCornerCoord(hexCenter, hexSize, i + 1);
+					let center = { x: ((start.x + end.x)/2), y: ((start.y + end.y)/2) };
+					let fromPlayerToSide = Math.floor(this.getDistance(playerPositionCenter, center));
+					let side = JSON.stringify({start, end});
+					if(fromPlayerToSide <= fromPlayerToHex && !arr.includes(side)) {
+						arr.push(side);
+					}else {
+						continue;
+					}
 				}
 			}
 			return null;
@@ -275,6 +288,10 @@ export default class Canvas extends Component {
 		this.setState({
 			hexSides: arr
 		}, this.visibleFieldCallback = () => this.visibleField(this.canvasInteraction))
+	}
+
+	getDistance(l1, l2) {
+		return Math.hypot(l2.x-l1.x, l2.y-l1.y);
 	}
 
 	getPath(start, current) {
@@ -299,7 +316,7 @@ export default class Canvas extends Component {
 		let nearestObstacles = [];
 		let frontier = [playerPosition];
 		cameFrom[JSON.stringify(playerPosition)] = JSON.stringify(playerPosition);
-		let objMaker =  (l) => {
+		let objMaker = (l) => {
 			if(!cameFrom.hasOwnProperty(JSON.stringify(l)) && hexPathMap.includes(JSON.stringify(l))) {
 				frontier.push(l);
 				cameFrom[JSON.stringify(l)] = JSON.stringify(current);
@@ -439,7 +456,7 @@ export default class Canvas extends Component {
 
 //useful function
 	getPointyHexCornerCoord(center, size, i) {
-		let angle_deg = 60 * i - 30;
+		let angle_deg = 60 * i + 30;
 		let angle_rad = Math.PI / 180 * angle_deg;
 		let x = center.x + size * Math.cos(angle_rad);
 		let y = center.y + size * Math.sin(angle_rad);
@@ -459,8 +476,8 @@ export default class Canvas extends Component {
 	}
 
 	cubeDirection(direction) {
-		const cubeDirection = [this.Hex(1, 0, -1), this.Hex(1, -1, 0), this.Hex(0, -1, 1),
-													this.Hex(-1, 0, 1), this.Hex(-1, 1, 0), this.Hex(0, 1, -1)];
+		const cubeDirection = [this.Hex(0, 1, -1), this.Hex(-1, 1, 0), this.Hex(-1, 0, 1), 
+														this.Hex(0, -1, 1), this.Hex(1, -1, 0), this.Hex(1, 0, -1) ];
 		return cubeDirection[ direction ];
 	}
 
@@ -517,7 +534,7 @@ export default class Canvas extends Component {
 	}
 
 	cubeSubstract(hexA, hexB) {
-		return this.Hex(hexA.q-hexB.q, hexA.r-hexB.r, hexA.s-hexB.s);
+		return this.Hex(hexA.q - hexB.q, hexA.r - hexB.r, hexA.s - hexB.s);
 	}
 
 	cubeLinearInt(hexA, hexB, t) {
@@ -554,9 +571,9 @@ export default class Canvas extends Component {
 
 	lineIntersect(x1, y1, x2, y2, x3, y3, x4, y4) { // 1 = beamStart, 2 = beamEnd, 3 = lineStart, 4 = lineEnd
 		let x = ( (x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4) ) /
-			( (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4) );
+			      ( (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4) );
 		let y = ( (x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) /
-			( (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4) );
+			      ( (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4) );
 		if(isNaN(x) || isNaN(y)) {
 			return false;
 		} else {
