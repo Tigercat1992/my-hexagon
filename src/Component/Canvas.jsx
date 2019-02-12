@@ -7,6 +7,8 @@ export default class Canvas extends Component {
 		super(props);
 		this.state = {
 			hexSize: 20,
+			hexSizeX: 18.477,
+			hexSizeY: 8,
 			hexOrigin: { x: 400, y: 300 },
 			currentHex: { q: 0, r: 0, s: 0, x: 0, y: 0 },
 			playerPosition: { q: 0, r: 0, s: 0 },
@@ -18,6 +20,8 @@ export default class Canvas extends Component {
 			hexSides: [],
 			nearestObstacles: [],
 			playerSight: 200,
+			endPoints: [],
+			enemyPosition: { q: 0, r: 0, s: 0 },
 		};
 		this.handleMouseMove = this.handleMouseMove.bind(this);
 		this.handleClick = this.handleClick.bind(this);
@@ -41,6 +45,8 @@ export default class Canvas extends Component {
 		this.canvasInteraction.height = canvasHeight;
 		this.canvasView.width = canvasWidth;
 		this.canvasView.height = canvasHeight;
+		this.canvasAnimation.width = canvasWidth;
+		this.canvasAnimation.height = canvasHeight;
 		this.canvasCoordinates.width = canvasWidth;
 		this.canvasCoordinates.height = canvasHeight;
 		this.canvasFog.width = canvasWidth;
@@ -50,13 +56,13 @@ export default class Canvas extends Component {
 		this.getCanvasPosition(this.canvasInteraction);
 		this.drawHex(this.canvasInteraction, this.getPointyHexToPixel(playerPosition, hexSize, hexOrigin), hexSize, 1, "black", "yellow");
 		this.drawHexes(this.canvasHex, hexSize);
-		this.drawObstacles(this.canvasHex);
+		//this.drawObstacles(this.canvasHex);
 		this.addFogOfWar(this.canvasFog);
-
+		setInterval( () => this.getRandomPosition(), 100);
 	}
 
 	shouldComponentUpdate(nextProps, nextState) {
-		const { hexSize, hexOrigin } = this.state;
+		const { hexSize, hexOrigin, enemyPosition, endPoints } = this.state;
 		const { canvasWidth, canvasHeight } = this.state.canvasSize;
 		/*if(nextState.currentHex !== this.state.currentHex) {
 			//const { x, y } = nextState.currentHex;
@@ -79,16 +85,27 @@ export default class Canvas extends Component {
 			//this.drawHex(this.canvasInteraction, this.Point(x, y), hexSize, 1, "black", "grey");
 			return true;
 		}*/
+		if(!this.areHexesEqual(enemyPosition, nextState.enemyPosition)) {
+			const ctx = this.canvasAnimation.getContext('2d');
+			if(this.isHexVisible(nextState.enemyPosition, endPoints)) {
+				ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+				const { x, y } = this.getPointyHexToPixel(nextState.enemyPosition, hexSize, hexOrigin);
+				this.drawHex(this.canvasAnimation, this.Point(x, y), hexSize, 1, "black", "red");
+				return true;
+			}else {
+				ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+			}
+		}
 		if(nextState.cameFrom !== this.state.cameFrom) {
 			const ctx = this.canvasView.getContext('2d');
 			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 			for(let l in nextState.cameFrom) {
 				const { q, r, s } = JSON.parse(l);
 				const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
-				this.drawHex(this.canvasView, this.Point(x, y), hexSize, 1, "black", "darkGreen")
-				/* let from = JSON.parse(nextState.cameFrom[l]);
-				let fromCoord = this.getPointyHexToPixel(this.Hex(from.q, from.r), hexSize, hexOrigin);
-				this.drawArrow(this.canvasView, fromCoord.x, fromCoord.y, x, y, "red", 2); */
+				this.drawHex(this.canvasView, this.Point(x, y), hexSize, 1, "green", "pink")
+				//let from = JSON.parse(nextState.cameFrom[l]);
+				//let fromCoord = this.getPointyHexToPixel(this.Hex(from.q, from.r), hexSize, hexOrigin);
+				//this.drawArrow(this.canvasView, fromCoord.x, fromCoord.y, x, y, "red", 2);
 			}
 			return true;
 		}
@@ -110,7 +127,7 @@ export default class Canvas extends Component {
 				const center = this.getPointyHexToPixel(this.Hex(q-p, r), hexSize, hexOrigin);
 				if( (center.x > hexWidth/2 && center.x < canvasWidth - hexWidth/2) &&
 					(center.y > hexHeight/2 && center.y < canvasHeight - hexHeight/2) ) {
-					this.drawHex(this.canvasHex, center, hexSize, "black", 1, "grey");
+					this.drawHex(this.canvasHex, center, hexSize, "green", 1, "grey");
 					//this.drawHexCoordRowAndColumn(this.canvasCoordinates, center, this.Hex(q-p, r, -(q-p)-r));
 					let bottomH = JSON.stringify(this.Hex(q-p, r, -(q-p)-r));
 					if(!obstacles.includes(bottomH)) {
@@ -127,7 +144,7 @@ export default class Canvas extends Component {
 				const center = this.getPointyHexToPixel(this.Hex(q+n, r), hexSize, hexOrigin);
 				if( (center.x > hexWidth/2 && center.x < canvasWidth - hexWidth/2) &&
 					(center.y > hexHeight/2 && center.y < canvasHeight - hexHeight/2) ) {
-					this.drawHex(this.canvasHex, center, hexSize, 1, "black", "grey");
+					this.drawHex(this.canvasHex, center, hexSize, 1, "green", "grey");
 					//this.drawHexCoordRowAndColumn(this.canvasCoordinates, center, this.Hex(q+n, r, -(q+n)-r));
 					var topH = JSON.stringify(this.Hex(q+n, r, -(q+n)-r));
 					if(!obstacles.includes(topH)) {
@@ -204,12 +221,22 @@ export default class Canvas extends Component {
 		ctx.fill();
 	}
 
-	drawObstacles(canvasID) {
+	drawObstacles(endPoints, canvasID) {
 		const { hexSize, hexOrigin, obstacles } = this.state;
-		obstacles.map( ob => {
-			const { q, r, s } = JSON.parse(ob);
-			const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
-			return this.drawHex(canvasID, this.Point(x, y), hexSize, 1, "black", "black");
+		// obstacles.map( ob => {
+		// 	const { q, r, s } = JSON.parse(ob);
+		// 	const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
+		// 	return this.drawHex(canvasID, this.Point(x, y), hexSize, 1, "black", "black");
+		// });
+		obstacles.map( (ob, i) => {
+			if( this.isHexVisible(JSON.parse(ob), endPoints) ) {
+				const { q, r, s } = JSON.parse(ob);
+				const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
+				this.drawHex(this.canvasHex, this.Point(x, y), hexSize, 1, "black", "aqua");
+				this.drawHex(this.canvasFog, this.Point(x, y), hexSize, 1, "black", "aqua");
+				this.drawHex(this.canvasFogHide, this.Point(x, y), hexSize, 1, "black", "aqua");
+			}	
+			return null;
 		});
 	}
  
@@ -228,6 +255,14 @@ export default class Canvas extends Component {
 		let x = center.x + range * Math.cos(angle_rad);
 		let y = center.y + range * Math.sin(angle_rad);
 		return this.Point(x, y);
+	}
+
+	getBeamsCoord(center, range, i) {
+		let angle_deg = 1 * i;
+		let angle_rad = Math.PI / 180 * angle_deg;
+		let x = center.x + range * Math.cos(angle_rad);
+		let y = center.y + range * Math.sin(angle_rad);
+		return this.PointWithAngle(x, y, angle_deg);
 	}
 
 	startMoving(path) {
@@ -254,7 +289,8 @@ export default class Canvas extends Component {
 		let endPoints = [];
 		let center = this.getPointyHexToPixel(playerPosition, hexSize, hexOrigin);
 		for(let j = 0; j < 360; j++) {
-			let beam = this.getHexBeamsCoord(center, 800, j);
+			//let beam = this.getHexBeamsCoord(center, 800, j);
+			let beam = this.getBeamsCoord(center, 800, j);
 			for(let i = 0; i < hexSides.length; i++) {
 				let side = JSON.parse(hexSides[i]);
 				//this.drawLine(canvasID, {x: side.start.x, y: side.start.y}, {x: side.end.x, y: side.end.y}, 2, "red");
@@ -262,11 +298,14 @@ export default class Canvas extends Component {
 				if(intersect) {
 					const distance = this.getDistance(center, intersect);
 					if(distance < this.state.playerSight) {
-						//this.drawLine(canvasID, center, intersect, 1, "yellow"); 
-						endPoints.push(intersect);
+						//this.drawLine(canvasID, center, intersect, 1, "yellow");
+						const point = this.PointWithAngle(intersect.x, intersect.y, beam.a);
+						//endPoints.push(intersect);
+						endPoints.push(point);
 					}else {
 						const t = this.state.playerSight / distance;
-						const point = this.Point( (1 - t) * center.x + t * intersect.x, (1 - t) * center.y + t * intersect.y );
+						//const point = this.Point( (1 - t) * center.x + t * intersect.x, (1 - t) * center.y + t * intersect.y );
+						const point = this.PointWithAngle( (1 - t) * center.x + t * intersect.x, (1 - t) * center.y + t * intersect.y, beam.a );
 						//this.drawLine(canvasID, center, point, 1, "yellow"); 	
 						endPoints.push(point);
 					}
@@ -274,8 +313,45 @@ export default class Canvas extends Component {
 				}
 			}
 		}
+		this.setState({ endPoints });
 		this.clearFogOfWar(endPoints, canvasID);
+		this.drawObstacles(endPoints);
+		// if( this.isHexVisible(this.Hex(0, 0, 0), endPoints) ) {
+		// 	this.drawHex(this.canvasInteraction, this.getPointyHexToPixel(this.Hex(0, 0, 0), hexSize, hexOrigin), hexSize, 1, "black", "red");
+		// }
 	}
+
+	isHexVisible(hex, endPoints) {
+		const { playerPosition, hexSize, hexOrigin } = this.state;
+		const playerCenter = this.getPointyHexToPixel(playerPosition, hexSize, hexOrigin);
+		const hexCenter = this.getPointyHexToPixel(hex, hexSize, hexOrigin);
+		//this.drawLine(this.canvasInteraction, playerCenter, hexCenter, 2, "blue");
+		for(let i = 0; i < 6; i++) {
+			const start = this.getPointyHexCornerCoord(hexCenter, hexSize, i);
+			const end = this.getPointyHexCornerCoord(hexCenter, hexSize, i + 1);
+			const sideCenter = {
+				x: (start.x + end.x) / 2,
+				y: (start.y + end.y) / 2,
+			};
+			const deltaX = sideCenter.x - playerCenter.x;
+			const deltaY = sideCenter.y - playerCenter.y;
+			let angle = Math.round(Math.atan2(deltaY, deltaX) * 180 / Math.PI);
+			if(angle < 0) angle = angle + 360;
+			const beam = endPoints.filter(v => v.a === angle)[0];
+			if(beam) {
+				//this.drawLine(this.canvasInteraction, playerCenter, beam, 2, "yellow"); 	
+				for(let i = 0; i < 6; i++) {
+					const start = this.getPointyHexCornerCoord(hexCenter, hexSize, i);
+					const end = this.getPointyHexCornerCoord(hexCenter, hexSize, i + 1);
+					const intersect = this.lineIntersect(playerCenter.x, playerCenter.y, beam.x, beam.y, start.x, start.y, end.x, end.y);
+					if(intersect !== false) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	} 
 
 	clearFogOfWar(endPoints, canvasID) {
 		const { playerPosition, hexSize, hexOrigin, playerSight, canvasSize } = this.state;
@@ -309,11 +385,11 @@ export default class Canvas extends Component {
 			if( i + 1 === 360) {
 				ctxCanvasFog.lineTo(endPoints[i].x, endPoints[i].y);
 				ctxCanvasFogHide.lineTo(endPoints[i].x, endPoints[i].y);
-				this.drawLine(canvasID, endPoints[i], endPoints[0], 1, "yellow"); 	
+				//this.drawLine(canvasID, endPoints[i], endPoints[0], 1, "yellow"); 	
 			}else {
 				ctxCanvasFog.lineTo(endPoints[i].x, endPoints[i].y);
 				ctxCanvasFogHide.lineTo(endPoints[i].x, endPoints[i].y);
-				this.drawLine(canvasID, endPoints[i], endPoints[i + 1], 1, "yellow"); 	
+				//this.drawLine(canvasID, endPoints[i], endPoints[i + 1], 1, "yellow"); 	
 			}
 		}
 		ctxCanvasFogHide.closePath();
@@ -423,6 +499,26 @@ export default class Canvas extends Component {
 		ctx.globalCompositeOperation = "destination-out";
 	}
 
+	getRandomPosition() {
+		const { enemyPosition, obstacles } = this.state;
+		const neighbor = this.getNeighbors(enemyPosition);
+		const randomNeighbor = Math.floor(Math.random() * (6 - 0)) + 0;
+		if( !this.isHexIncluded(obstacles, neighbor[randomNeighbor]) ) {
+			this.setState({ enemyPosition: neighbor[randomNeighbor] });
+		}
+	}
+
+	isHexIncluded(arr, hex) {
+		const result = arr.includes( JSON.stringify(this.Hex(hex.q, hex.r, hex.s)) );
+		//const result = arr.filter(v => (v.q === hex.q && v.r === hex.r && v.s === hex.s));
+		//return result.length === 0 ? false : true;
+		return result;
+	}
+
+	areHexesEqual(h1, h2) {
+		return h1.q === h2.q && h1.r === h2.r && h1.s === h2.s;
+	}
+
 	handleClick() {
 		clearInterval(this.intervalID);
 		const { currentHex, cameFrom, path } = this.state;
@@ -514,6 +610,7 @@ export default class Canvas extends Component {
 				<canvas ref={canvasHex => this.canvasHex = canvasHex}></canvas>
 				<canvas ref={canvasCoordinates => this.canvasCoordinates = canvasCoordinates}></canvas>
 				<canvas ref={canvasView => this.canvasView = canvasView}></canvas>
+				<canvas ref={canvasAnimation => this.canvasAnimation = canvasAnimation}></canvas>
 				<canvas ref={canvasFog => this.canvasFog = canvasFog}></canvas>
 				<canvas ref={canvasFogHide => this.canvasFogHide = canvasFogHide}></canvas>
 				<canvas 
@@ -530,21 +627,41 @@ export default class Canvas extends Component {
 	getPointyHexCornerCoord(center, size, i) {
 		let angle_deg = 60 * i + 30;
 		let angle_rad = Math.PI / 180 * angle_deg;
-		let x = center.x + size * Math.cos(angle_rad);
-		let y = center.y + size * Math.sin(angle_rad);
+		// let x = center.x + size * Math.cos(angle_rad);
+		// let y = center.y + size * Math.sin(angle_rad);
+		const { hexSizeX, hexSizeY } = this.state;
+		let x = center.x + hexSizeX * Math.cos(angle_rad);
+		let y = center.y + hexSizeY * Math.sin(angle_rad);
 		return this.Point(x, y);
 	}
 
 	getPointyHexToPixel(hex, size, hexOrigin) {
-		let x = size * (Math.sqrt(3) * hex.q + Math.sqrt(3)/2 * hex.r) + hexOrigin.x;
-		let y = size * (3/2 * hex.r) + hexOrigin.y;
+		// let x = size * (Math.sqrt(3) * hex.q + Math.sqrt(3)/2 * hex.r) + hexOrigin.x;
+		// let y = size * (3/2 * hex.r) + hexOrigin.y;
+		const { hexSizeX, hexSizeY } = this.state;
+		let x = hexSizeX * Math.sqrt(3) * (hex.q + hex.r /2) + hexOrigin.x;
+		let y = hexSizeY * (3/2 * hex.r) + hexOrigin.y;
 		return this.Point(x, y);
 	}
 
 	getPointyPixelToHex(point, size, hexOrigin) {
-		let q = ((point.x - hexOrigin.x) * Math.sqrt(3) / 3 - (point.y - hexOrigin.y) / 3) / size;
-		let r = (point.y - hexOrigin.y) * 2 / 3 / size;
-		return this.Hex(q, r);
+		// let q = ((point.x - hexOrigin.x) * Math.sqrt(3) / 3 - (point.y - hexOrigin.y) / 3) / size;
+		// let r = (point.y - hexOrigin.y) * 2 / 3 / size;
+		const { hexSizeX, hexSizeY } = this.state;
+		let q = ( ( (point.x - hexOrigin.x) * Math.sqrt(3) / 3 ) / hexSizeX - ((point.y - hexOrigin.y) / 3) / hexSizeY);
+		let r = (point.y - hexOrigin.y) * 2 / 3 / hexSizeY;
+		return this.Hex(q, r, -q -r);
+	}
+
+	getHexParams(hex, size) {
+		// let hexWidth = Math.sqrt(3) * size;
+		// let hexHeight = 2 * size;
+		const { hexSizeY } = this.state;
+		let hexWidth = 2 * hexSizeY;
+		let hexHeight = 32;
+		let horizDist = hexWidth;
+		let vertDist = hexHeight * 3 / 4;
+		return { hexWidth, hexHeight, horizDist, vertDist };
 	}
 
 	cubeDirection(direction) {
@@ -621,14 +738,6 @@ export default class Canvas extends Component {
 		return (a + (b - a) * t);
 	}
 
-	getHexParams(hex, size) {
-		let hexWidth = Math.sqrt(3) * size;
-		let hexHeight = 2 * size;
-		let horizDist = hexWidth;
-		let vertDist = hexHeight * 3 / 4;
-		return { hexWidth, hexHeight, horizDist, vertDist };
-	}
-
 	getCanvasPosition(canvasID) {
 		let rect = canvasID.getBoundingClientRect();
 		this.setState({
@@ -678,6 +787,10 @@ export default class Canvas extends Component {
 //helper function
 	Point(x, y) {
 		return { x: x, y: y };
+	}
+
+	PointWithAngle(x, y, a) {
+		return { x: x, y: y, a: a };
 	}
 
 	Hex(q, r, s) {
