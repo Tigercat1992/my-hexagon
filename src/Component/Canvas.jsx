@@ -12,10 +12,10 @@ export default class Canvas extends Component {
 			hexOrigin: { x: 400, y: 300 },
 			currentHex: { q: 0, r: 0, s: 0, x: 0, y: 0 },
 			playerPosition: { q: 0, r: 0, s: 0 },
-			obstacles: DUMMY_OBSTACLES,
+			obstacles: [],//DUMMY_OBSTACLES,
 			//frontier: [],
 			cameFrom: {},
-			hexPathMap: [],
+			hexPathMap: {},
 			path: [],
 			hexSides: [],
 			nearestObstacles: [],
@@ -27,17 +27,27 @@ export default class Canvas extends Component {
 		this.handleClick = this.handleClick.bind(this);
 		//this.handleExpandClick = this.handleExpandClick.bind(this);
 		this.startMoving = this.startMoving.bind(this);
+		this.handleMouseOut = this.handleMouseOut.bind(this);
+		this.handleMouseOver = this.handleMouseOver.bind(this);
 	}
 
 	componentWillMount() {
 		this.setState({
-			canvasSize: { canvasWidth: 800, canvasHeight: 600 },
+			canvasSize: { 
+				canvasWidth: 800, canvasHeight: 600,
+				offscreenCanvasWidth: 2000, offscreenCanvasHeight: 2000,
+			},
+			mouseX: 0,
+			mouseY: 0,
+			canvasX: 0,
+			canvasY: 0,
+			mouseOut: false,
 			hexParams: this.getHexParams(this.canvasHex, this.state.hexSize)
 		})
 	}
 
 	componentDidMount() {
-		const { canvasWidth, canvasHeight } = this.state.canvasSize;
+		const { canvasWidth, canvasHeight, offscreenCanvasWidth, offscreenCanvasHeight } = this.state.canvasSize;
 		const { hexSize, hexOrigin, playerPosition } = this.state;
 		this.canvasHex.width = canvasWidth;
 		this.canvasHex.height = canvasHeight;
@@ -53,12 +63,15 @@ export default class Canvas extends Component {
 		this.canvasFog.height = canvasHeight;
 		this.canvasFogHide.width = canvasWidth;
 		this.canvasFogHide.height = canvasHeight;
+		this.canvasHexOffscreen = new OffscreenCanvas(offscreenCanvasWidth, offscreenCanvasHeight);
+		this.canvasInteractionOffscreen = new OffscreenCanvas(offscreenCanvasWidth, offscreenCanvasHeight);
 		this.getCanvasPosition(this.canvasInteraction);
-		this.drawHex(this.canvasInteraction, this.getPointyHexToPixel(playerPosition, hexSize, hexOrigin), hexSize, 1, "black", "yellow");
 		this.drawHexes(this.canvasHex, hexSize);
+		this.drawInitPlayerPosition();
 		//this.drawObstacles(this.canvasHex);
-		this.addFogOfWar(this.canvasFog);
+		//this.addFogOfWar(this.canvasFog);
 		setInterval( () => this.getRandomPosition(), 100);
+		setInterval( () => this.scrollByPointer(), 1);
 	}
 
 	shouldComponentUpdate(nextProps, nextState) {
@@ -102,7 +115,8 @@ export default class Canvas extends Component {
 			for(let l in nextState.cameFrom) {
 				const { q, r, s } = JSON.parse(l);
 				const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
-				this.drawHex(this.canvasView, this.Point(x, y), hexSize, 1, "green", "pink")
+				//this.drawHex(this.canvasView, this.Point(x, y), hexSize, 1, "green", "transparent")
+
 				//let from = JSON.parse(nextState.cameFrom[l]);
 				//let fromCoord = this.getPointyHexToPixel(this.Hex(from.q, from.r), hexSize, hexOrigin);
 				//this.drawArrow(this.canvasView, fromCoord.x, fromCoord.y, x, y, "red", 2);
@@ -112,60 +126,74 @@ export default class Canvas extends Component {
 		return false;
 	}
 
+	drawInitPlayerPosition() {
+		const { playerPosition, hexSize, hexOrigin, canvasX, canvasY } = this.state;
+		const { canvasWidth, canvasHeight, offscreenCanvasWidth, offscreenCanvasHeight } = this.state.canvasSize;
+		this.drawHex(this.canvasInteractionOffscreen, this.getPointyHexToPixel(playerPosition, hexSize, hexOrigin), hexSize, 1, "green", "yellow");
+		const ctxCanvasInteraction = this.canvasInteraction.getContext("2d");
+		ctxCanvasInteraction.drawImage(this.canvasInteractionOffscreen, canvasX, canvasY, canvasWidth, canvasHeight, 0, 0, canvasWidth, canvasHeight);
+	}
+
 //draw Hexes function (1) # Responsive in any canvas size
 	drawHexes() {
 		const { hexSize, hexOrigin, hexParams, canvasSize, obstacles, playerPosition } = this.state;
-		const { canvasWidth, canvasHeight } = this.state.canvasSize;
+		const { canvasWidth, canvasHeight, offscreenCanvasWidth, offscreenCanvasHeight } = this.state.canvasSize;
 		const { hexWidth, hexHeight } = this.state.hexParams;
 		const { leftSide, rightSide, topSide, bottomSide } = this.getHexesAreaOnCanvas(canvasSize, hexOrigin, hexParams);
-		
-		let hexPathMap = [];
+
+		let hexPathMap = {};
 		let p = 0;
 		for(let r = 0; r <= bottomSide; r++) {
 			if(r%2 === 0 && r !== 0) p++;
 			for(let q = -leftSide; q <= rightSide; q++) {
 				const center = this.getPointyHexToPixel(this.Hex(q-p, r), hexSize, hexOrigin);
-				if( (center.x > hexWidth/2 && center.x < canvasWidth - hexWidth/2) &&
-					(center.y > hexHeight/2 && center.y < canvasHeight - hexHeight/2) ) {
-					this.drawHex(this.canvasHex, center, hexSize, "green", 1, "grey");
+				if( (center.x > hexWidth/2 && center.x < offscreenCanvasWidth - hexWidth/2) &&
+					(center.y > hexHeight/2 && center.y < offscreenCanvasHeight - hexHeight/2) ) {
+					this.drawHex(this.canvasHexOffscreen, center, hexSize, 1, "green", "transparent");
 					//this.drawHexCoordRowAndColumn(this.canvasCoordinates, center, this.Hex(q-p, r, -(q-p)-r));
 					let bottomH = JSON.stringify(this.Hex(q-p, r, -(q-p)-r));
 					if(!obstacles.includes(bottomH)) {
-						hexPathMap.push(bottomH);
+						hexPathMap[bottomH] = this.Hex(q-p, r, -(q-p)-r);
 					}
 				}
 			}
 		}
 		
-		let n = 0;
+		let n = 0; 
 		for(let r = -1; r >= -topSide; r--) {
 			if(r%2 !== 0) n++;
 			for(let q = -leftSide; q <= rightSide; q++) {
 				const center = this.getPointyHexToPixel(this.Hex(q+n, r), hexSize, hexOrigin);
-				if( (center.x > hexWidth/2 && center.x < canvasWidth - hexWidth/2) &&
-					(center.y > hexHeight/2 && center.y < canvasHeight - hexHeight/2) ) {
-					this.drawHex(this.canvasHex, center, hexSize, 1, "green", "grey");
+				if( (center.x > hexWidth/2 && center.x < offscreenCanvasWidth - hexWidth/2) &&
+					(center.y > hexHeight/2 && center.y < offscreenCanvasHeight - hexHeight/2) ) {
+					this.drawHex(this.canvasHexOffscreen, center, hexSize, 1, "green", "transparent");
 					//this.drawHexCoordRowAndColumn(this.canvasCoordinates, center, this.Hex(q+n, r, -(q+n)-r));
 					var topH = JSON.stringify(this.Hex(q+n, r, -(q+n)-r));
 					if(!obstacles.includes(topH)) {
-						hexPathMap.push(topH);
+						hexPathMap[topH] = this.Hex(q+n, r, -(q+n)-r);
 					}
 				}
 			}
 		}
 
-		hexPathMap = [].concat(hexPathMap);
-		this.setState(
-			{ hexPathMap },
+		const ctx = this.canvasHex.getContext("2d");
+		ctx.drawImage(this.canvasHexOffscreen, 0, 0, canvasWidth, canvasHeight, 0, 0, canvasWidth, canvasHeight)
+
+		//hexPathMap = [].concat(hexPathMap);
+		this.setState({ 
+			hexPathMap: { ...hexPathMap } 
+		},
 			this.breadthFirstSearchCallback = () => this.breadthFirstSearch(playerPosition)
 		)
 	}
 
-	getHexesAreaOnCanvas({canvasWidth, canvasHeight}, hexOrigin, hexParams) {
+	getHexesAreaOnCanvas({canvasWidth, canvasHeight, offscreenCanvasWidth, offscreenCanvasHeight}, hexOrigin, hexParams) {
 		let leftSide = Math.round( hexOrigin.x / hexParams.horizDist );
-		let rightSide = Math.round( (canvasWidth - hexOrigin.x) / hexParams.horizDist );
+		//let rightSide = Math.round( (canvasWidth - hexOrigin.x) / hexParams.horizDist );
+		let rightSide = Math.round( (offscreenCanvasWidth - hexOrigin.x) / hexParams.horizDist );
 		let topSide = Math.round( hexOrigin.y / hexParams.vertDist );
-		let bottomSide = Math.round( (canvasHeight - hexOrigin.y) / hexParams.vertDist );
+		//let bottomSide = Math.round( (canvasHeight - hexOrigin.y) / hexParams.vertDist );
+		let bottomSide = Math.round( (offscreenCanvasHeight - hexOrigin.y) / hexParams.vertDist );
 		return { leftSide, rightSide, topSide, bottomSide };
 	}
 //draw Hexes function (1) END
@@ -270,13 +298,16 @@ export default class Canvas extends Component {
 		if(path.length === 0) {
 			clearInterval(this.intervalID);
 		} else {
-			const { canvasWidth, canvasHeight } = this.state.canvasSize;
+			const { canvasWidth, canvasHeight, offscreenCanvasWidth, offscreenCanvasHeight } = this.state.canvasSize;
 			const ctx = this.canvasInteraction.getContext("2d");
 			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 			let current = path.pop();
 			const { q, r, s } = JSON.parse(current);
 			const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
-			this.drawHex(this.canvasInteraction, this.Point(x, y), hexSize, 1, "black", "yellow");
+			const ctxCanvasInteractionOffscreen = this.canvasInteractionOffscreen.getContext("2d");
+			ctxCanvasInteractionOffscreen.clearRect(0, 0, offscreenCanvasWidth, offscreenCanvasHeight);
+			this.drawHex(this.canvasInteractionOffscreen, this.Point(x, y), hexSize, 1, "black", "yellow");
+			ctx.drawImage(this.canvasInteractionOffscreen, this.state.canvasX, this.state.canvasY, canvasWidth, canvasHeight, 0, 0, canvasWidth, canvasHeight);
 			this.setState(
 				{ playerPosition: this.Hex(q, r, s) },
 				this.breadthFirstSearchCallback = () => this.breadthFirstSearch(this.state.playerPosition)
@@ -314,7 +345,7 @@ export default class Canvas extends Component {
 			}
 		}
 		this.setState({ endPoints });
-		this.clearFogOfWar(endPoints, canvasID);
+		//this.clearFogOfWar(endPoints, canvasID);
 		this.drawObstacles(endPoints);
 		// if( this.isHexVisible(this.Hex(0, 0, 0), endPoints) ) {
 		// 	this.drawHex(this.canvasInteraction, this.getPointyHexToPixel(this.Hex(0, 0, 0), hexSize, hexOrigin), hexSize, 1, "black", "red");
@@ -356,46 +387,60 @@ export default class Canvas extends Component {
 	clearFogOfWar(endPoints, canvasID) {
 		const { playerPosition, hexSize, hexOrigin, playerSight, canvasSize } = this.state;
 		const { canvasWidth, canvasHeight } = canvasSize;
+
 		const ctxCanvasFog = this.canvasFog.getContext("2d");
 		const center = this.getPointyHexToPixel(playerPosition, hexSize, hexOrigin);
-		ctxCanvasFog.beginPath();
 		const rGCanvasFog = ctxCanvasFog.createRadialGradient(center.x, center.y, playerSight - 100, center.x, center.y, playerSight);
 		rGCanvasFog.addColorStop(0, "rgba(0, 0, 0, 1)");
 		rGCanvasFog.addColorStop(0.9, "rgba(0, 0, 0, 0.1)");
 		rGCanvasFog.addColorStop(1, "rgba(0, 0, 0, 0)");
 		ctxCanvasFog.fillStyle = rGCanvasFog;
-		ctxCanvasFog.moveTo(endPoints[0].x, endPoints[0].y);
+		
 
 		const ctxCanvasFogHide = this.canvasFogHide.getContext("2d");
 		ctxCanvasFogHide.globalCompositeOperation = "source-out";
 		ctxCanvasFogHide.clearRect(0, 0, canvasWidth, canvasHeight);
 		ctxCanvasFogHide.fillStyle = "rgba(0, 0, 0, 0.7)";
 		ctxCanvasFogHide.fillRect(0, 0, canvasWidth, canvasHeight);
-
-		ctxCanvasFogHide.beginPath();
+		
 		const rGCanvasFogHide = ctxCanvasFogHide.createRadialGradient(center.x, center.y, playerSight - 100, center.x, center.y, playerSight);
 		rGCanvasFogHide.addColorStop(0, "rgba(0, 0, 0, 1)");
 		rGCanvasFogHide.addColorStop(0.9, "rgba(0, 0, 0, 0.1)");
 		rGCanvasFogHide.addColorStop(1, "rgba(0, 0, 0, 0)");
 		ctxCanvasFogHide.globalCompositeOperation = "destination-out";
 		ctxCanvasFogHide.fillStyle = rGCanvasFogHide;
-		ctxCanvasFogHide.moveTo(endPoints[0].x, endPoints[0].y);
 
-		for(let i = 0; i < endPoints.length; i++) {
-			if( i + 1 === 360) {
-				ctxCanvasFog.lineTo(endPoints[i].x, endPoints[i].y);
-				ctxCanvasFogHide.lineTo(endPoints[i].x, endPoints[i].y);
-				//this.drawLine(canvasID, endPoints[i], endPoints[0], 1, "yellow"); 	
-			}else {
-				ctxCanvasFog.lineTo(endPoints[i].x, endPoints[i].y);
-				ctxCanvasFogHide.lineTo(endPoints[i].x, endPoints[i].y);
-				//this.drawLine(canvasID, endPoints[i], endPoints[i + 1], 1, "yellow"); 	
+		if(endPoints.length > 0) {
+			ctxCanvasFog.beginPath();
+			ctxCanvasFog.moveTo(endPoints[0].x, endPoints[0].y);
+			ctxCanvasFogHide.beginPath();
+			ctxCanvasFogHide.moveTo(endPoints[0].x, endPoints[0].y);
+			for(let i = 0; i < endPoints.length; i++) {
+				if( i + 1 === 360) {
+					ctxCanvasFog.lineTo(endPoints[i].x, endPoints[i].y);
+					ctxCanvasFogHide.lineTo(endPoints[i].x, endPoints[i].y);
+					//this.drawLine(canvasID, endPoints[i], endPoints[0], 1, "yellow"); 	
+				}else {
+					ctxCanvasFog.lineTo(endPoints[i].x, endPoints[i].y);
+					ctxCanvasFogHide.lineTo(endPoints[i].x, endPoints[i].y);
+					//this.drawLine(canvasID, endPoints[i], endPoints[i + 1], 1, "yellow"); 	
+				}
 			}
+			ctxCanvasFogHide.closePath();
+			ctxCanvasFogHide.fill();
+			ctxCanvasFog.closePath();
+			ctxCanvasFog.fill();
+		}else {
+			ctxCanvasFog.beginPath();
+			ctxCanvasFog.arc(center.x, center.y, this.state.playerSight, 0, 2 * Math.PI);
+			ctxCanvasFog.closePath();
+			ctxCanvasFog.fill();
+
+			ctxCanvasFogHide.beginPath();
+			ctxCanvasFogHide.arc(center.x, center.y, this.state.playerSight, 0, 2 * Math.PI);
+			ctxCanvasFogHide.closePath();
+			ctxCanvasFogHide.fill();
 		}
-		ctxCanvasFogHide.closePath();
-		ctxCanvasFogHide.fill();
-		ctxCanvasFog.closePath();
-		ctxCanvasFog.fill();
 	}
 
 	getObstacleSides() { // JSON OBJECT OF ARRAY
@@ -454,8 +499,9 @@ export default class Canvas extends Component {
 		let nearestObstacles = [];
 		let frontier = [playerPosition];
 		cameFrom[JSON.stringify(playerPosition)] = JSON.stringify(playerPosition);
+		console.time("start")
 		let objMaker = (l) => {
-			if(!cameFrom.hasOwnProperty(JSON.stringify(l)) && hexPathMap.includes(JSON.stringify(l))) {
+			if(!cameFrom.hasOwnProperty(JSON.stringify(l)) && hexPathMap.hasOwnProperty(JSON.stringify(l)) ) {
 				frontier.push(l);
 				cameFrom[JSON.stringify(l)] = JSON.stringify(current);
 			}
@@ -468,6 +514,7 @@ export default class Canvas extends Component {
 			let arr = this.getNeighbors(current);
 			arr.map(objMaker)
 		};
+		console.timeEnd("start")
 		cameFrom = Object.assign({}, cameFrom);
 		this.setState({ 
 			cameFrom,
@@ -536,8 +583,9 @@ export default class Canvas extends Component {
 		const { canvasWidth, canvasHeight } = this.state.canvasSize;
 		const { hexWidth, hexHeight } = this.state.hexParams;
 		let offsetX = event.pageX - canvasPosition.left;
-		let offsetY = event.pageY - canvasPosition.top;		
-		const { q, r, s } = this.cubeRound(this.getPointyPixelToHex(this.Point(offsetX, offsetY), hexSize, hexOrigin));
+		let offsetY = event.pageY - canvasPosition.top;
+		this.setState({ mouseX: offsetX, mouseY: offsetY });
+		const { q, r, s } = this.cubeRound(this.getPointyPixelToHex(this.Point(offsetX + this.state.canvasX, offsetY + this.state.canvasY), hexSize, hexOrigin));
 		const { x, y } = this.getPointyHexToPixel(this.Hex(q, r, s), hexSize, hexOrigin);
 		let { playerPosition } = this.state;
 		//this.getDistanceLine( this.Hex(playerPosition.q, playerPosition.r, playerPosition.s), this.Hex(q,r,s), hexSize, hexOrigin );
@@ -546,6 +594,75 @@ export default class Canvas extends Component {
 		if((x > hexWidth/2 && x < canvasWidth - hexWidth/2) && (y > hexHeight/2 && y < canvasHeight - hexHeight/2)) {
 			this.setState({ currentHex: { q, r, s, x, y } });
 		}
+	}
+
+	scrollByPointer() {
+		const { canvasWidth, canvasHeight, offscreenCanvasWidth, offscreenCanvasHeight } = this.state.canvasSize;
+		const ctxCanvasHex = this.canvasHex.getContext("2d");
+		const ctxCanvasInteraction = this.canvasInteraction.getContext("2d");
+
+		if(this.state.mouseOut) { return; }
+		if(this.state.mouseX > canvasWidth - 50 && this.state.canvasX < offscreenCanvasWidth - canvasWidth) {
+			this.setState({ 
+				mouseX: this.state.mouseX + 1,
+				canvasX: this.state.canvasX + 1
+			},
+				() => {
+					ctxCanvasHex.clearRect(0, 0, canvasWidth, canvasHeight);
+					ctxCanvasHex.drawImage(this.canvasHexOffscreen, this.state.canvasX, this.state.canvasY, canvasWidth, canvasHeight, 0, 0, canvasWidth, canvasHeight);
+					ctxCanvasInteraction.clearRect(0, 0, canvasWidth, canvasHeight);
+					ctxCanvasInteraction.drawImage(this.canvasInteractionOffscreen, this.state.canvasX, this.state.canvasY, canvasWidth, canvasHeight, 0, 0, canvasWidth, canvasHeight);
+				}
+			);
+		}
+		if(this.state.mouseX < 50 && this.state.canvasX > 0) {
+			this.setState({ 
+				mouseX: this.state.mouseX - 1,
+				canvasX: this.state.canvasX - 1
+			},
+				() => {
+					ctxCanvasHex.clearRect(0, 0, canvasWidth, canvasHeight);
+					ctxCanvasHex.drawImage(this.canvasHexOffscreen, this.state.canvasX, this.state.canvasY, canvasWidth, canvasHeight, 0, 0, canvasWidth, canvasHeight);
+					ctxCanvasInteraction.clearRect(0, 0, canvasWidth, canvasHeight);
+					ctxCanvasInteraction.drawImage(this.canvasInteractionOffscreen, this.state.canvasX, this.state.canvasY, canvasWidth, canvasHeight, 0, 0, canvasWidth, canvasHeight);
+				}
+			);
+		}
+		if(this.state.mouseY > canvasHeight - 50 && this.state.canvasY < offscreenCanvasHeight - canvasHeight) {
+			this.setState({ 
+				mouseY: this.state.mouseY + 1,
+				canvasY: this.state.canvasY + 1
+			},
+				() => {
+					ctxCanvasHex.clearRect(0, 0, canvasWidth, canvasHeight);
+					ctxCanvasHex.drawImage(this.canvasHexOffscreen, this.state.canvasX, this.state.canvasY, canvasWidth, canvasHeight, 0, 0, canvasWidth, canvasHeight);
+					ctxCanvasInteraction.clearRect(0, 0, canvasWidth, canvasHeight);
+					ctxCanvasInteraction.drawImage(this.canvasInteractionOffscreen, this.state.canvasX, this.state.canvasY, canvasWidth, canvasHeight, 0, 0, canvasWidth, canvasHeight);
+				}
+			);
+		}
+		if(this.state.mouseY < 50 && this.state.canvasY > 0) {
+			this.setState({ 
+				mouseY: this.state.mouseY - 1,
+				canvasY: this.state.canvasY - 1
+			},
+				() => {
+					ctxCanvasHex.clearRect(0, 0, canvasWidth, canvasHeight);
+					ctxCanvasHex.drawImage(this.canvasHexOffscreen, this.state.canvasX, this.state.canvasY, canvasWidth, canvasHeight, 0, 0, canvasWidth, canvasHeight);
+					ctxCanvasInteraction.clearRect(0, 0, canvasWidth, canvasHeight);
+					ctxCanvasInteraction.drawImage(this.canvasInteractionOffscreen, this.state.canvasX, this.state.canvasY, canvasWidth, canvasHeight, 0, 0, canvasWidth, canvasHeight);
+				}
+			);
+		}
+	}
+
+	handleMouseOut() {
+		this.setState({ mouseOut: true });
+	}
+
+
+	handleMouseOver() {
+		this.setState({ mouseOut: false })
 	}
 
 	// handleExpandClick() {
@@ -606,7 +723,7 @@ export default class Canvas extends Component {
 
 	render() {
 		return (
-			<div>
+			<React.Fragment>
 				<canvas ref={canvasHex => this.canvasHex = canvasHex}></canvas>
 				<canvas ref={canvasCoordinates => this.canvasCoordinates = canvasCoordinates}></canvas>
 				<canvas ref={canvasView => this.canvasView = canvasView}></canvas>
@@ -617,9 +734,11 @@ export default class Canvas extends Component {
 					ref={canvasInteraction => this.canvasInteraction = canvasInteraction}
 					onMouseMove={this.handleMouseMove}
 					onClick={this.handleClick}
+					onMouseOut={this.handleMouseOut}
+					onMouseOver={this.handleMouseOver}
 				></canvas>
 				<button className="expandButton" onClick={this.handleExpandClick}>Expand</button>
-			</div>
+			</React.Fragment>
 		);
 	}
 
@@ -658,7 +777,7 @@ export default class Canvas extends Component {
 		// let hexHeight = 2 * size;
 		const { hexSizeY } = this.state;
 		let hexWidth = 2 * hexSizeY;
-		let hexHeight = 32;
+		let hexHeight = hexSizeY;
 		let horizDist = hexWidth;
 		let vertDist = hexHeight * 3 / 4;
 		return { hexWidth, hexHeight, horizDist, vertDist };
